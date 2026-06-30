@@ -1,0 +1,62 @@
+{
+  "name": "pare",
+  "version": "0.1.0",
+  "description": "Pare down a bloated test run to just the tests a diff actually affects. Static-first, deterministic, zero runtime dependencies.",
+  "keywords": [
+    "test",
+    "test-selection",
+    "test-impact-analysis",
+    "ci",
+    "monorepo",
+    "vitest",
+    "jest",
+    "diff",
+    "affected",
+    "dependency-graph"
+  ],
+  "license": "MIT",
+  "author": "Joe Kane <joe@joekane.org> (https://joekane.org)",
+  "homepage": "https://github.com/TheJoeKD20/pare#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/TheJoeKD20/pare.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TheJoeKD20/pare/issues"
+  },
+  "type": "module",
+  "bin": {
+    "pare": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^20.14.0",
+    "tsup": "^8.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  }
+}

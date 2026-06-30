@@ -1,0 +1,35 @@
+<svg width="820" height="300" viewBox="0 0 820 300" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pare terminal demo">
+  <defs>
+    <style>
+      .bg { fill: #0d1117; }
+      .bar { fill: #161b22; }
+      .mono { font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace; font-size: 16px; }
+      .prompt { fill: #7ee787; }
+      .cmd { fill: #e6edf3; }
+      .dim { fill: #7d8590; }
+      .green { fill: #3fb950; }
+      .red { fill: #f85149; }
+      .cyan { fill: #56d4dd; }
+      .yellow { fill: #e3b341; }
+    </style>
+  </defs>
+  <rect class="bg" width="820" height="300" rx="12"/>
+  <rect class="bar" width="820" height="36" rx="12"/>
+  <rect class="bar" y="20" width="820" height="16"/>
+  <circle cx="22" cy="18" r="6" fill="#f85149"/>
+  <circle cx="44" cy="18" r="6" fill="#e3b341"/>
+  <circle cx="66" cy="18" r="6" fill="#3fb950"/>
+  <text x="410" y="23" text-anchor="middle" class="mono dim">pare — smart test selection</text>
+
+  <text x="20" y="76" class="mono"><tspan class="prompt">$ </tspan><tspan class="cmd">vitest run $(pare --since main)</tspan></text>
+
+  <text x="20" y="108" class="mono"><tspan class="cyan">pare:</tspan><tspan class="cmd"> selected </tspan><tspan class="green">14</tspan><tspan class="dim">/1,820</tspan><tspan class="cmd"> tests from </tspan><tspan class="yellow">3</tspan><tspan class="cmd"> changed files in </tspan><tspan class="green">41ms</tspan></text>
+
+  <text x="20" y="148" class="mono"><tspan class="green">✓</tspan><tspan class="cmd"> test/auth/login.test.ts (6)</tspan></text>
+  <text x="20" y="172" class="mono"><tspan class="green">✓</tspan><tspan class="cmd"> test/auth/token.test.ts (5)</tspan></text>
+  <text x="20" y="196" class="mono"><tspan class="green">✓</tspan><tspan class="cmd"> test/session.test.ts (3)</tspan></text>
+
+  <text x="20" y="236" class="mono"><tspan class="dim">Test Files  </tspan><tspan class="green">3 passed</tspan><tspan class="dim"> (3)</tspan></text>
+  <text x="20" y="260" class="mono"><tspan class="dim">     Tests  </tspan><tspan class="green">14 passed</tspan><tspan class="dim"> (14)</tspan></text>
+  <text x="20" y="284" class="mono"><tspan class="dim">  Duration  </tspan><tspan class="cmd">0.9s</tspan><tspan class="dim">  (was 47s for the full suite)</tspan></text>
+</svg>
