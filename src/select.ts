@@ -105,6 +105,7 @@ export function computeSelection(input: ComputeInput): SelectionResult {
     base: changes.base,
     changedFiles,
     selectedTests: allTests,
+    llmSuggested: [],
     allTests,
     fellBackToFullSuite: true,
     reason,
@@ -131,11 +132,22 @@ export function computeSelection(input: ComputeInput): SelectionResult {
     base: changes.base,
     changedFiles,
     selectedTests,
+    llmSuggested: [],
     allTests,
     fellBackToFullSuite: false,
     reason: { kind: "none" },
     durationMs: elapsed(input.startedAt),
   };
+}
+
+/**
+ * The full set of tests a runner should execute for this result: the static
+ * selection plus any LLM-suggested tests, de-duplicated and sorted. On a
+ * full-suite fallback this is simply every test.
+ */
+export function testsToRun(result: SelectionResult): string[] {
+  if (result.fellBackToFullSuite) return result.allTests;
+  return [...new Set([...result.selectedTests, ...result.llmSuggested])].sort();
 }
 
 function elapsed(startedAt: number): number {
