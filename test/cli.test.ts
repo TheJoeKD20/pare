@@ -93,4 +93,50 @@ d("pare CLI (built binary)", () => {
     expect(out.status).toBe(2);
     expect(out.stderr).toContain("Unknown option");
   });
+
+  const JUNIT = (status: "pass" | "fail") => `<testsuites><testsuite name="s">
+    <testcase classname="a.test.ts" name="t1"${status === "pass" ? "/>" : "><failure/></testcase>"}
+  </testsuite></testsuites>`;
+
+  it("flake record then report ranks a flaky test", () => {
+    repo = makeRepo(FILES);
+    repo.commitAll("init");
+    repo.write("r1.xml", JUNIT("pass"));
+    repo.write("r2.xml", JUNIT("fail"));
+    repo.write("r3.xml", JUNIT("pass"));
+
+    expect(run(repo.root, ["flake", "record", "r1.xml", "r2.xml", "r3.xml"]).status).toBe(0);
+
+    const out = run(repo.root, ["flake", "report", "--json"]);
+    expect(out.status).toBe(0);
+    const rows = JSON.parse(out.stdout);
+    expect(rows[0].id).toBe("a.test.ts > t1");
+    expect(rows[0].runs).toBe(3);
+    expect(rows[0].flakeScore).toBeGreaterThan(0);
+  });
+
+  it("flake clear removes history", () => {
+    repo = makeRepo(FILES);
+    repo.commitAll("init");
+    repo.write("r1.xml", JUNIT("fail"));
+    run(repo.root, ["flake", "record", "r1.xml"]);
+    const cleared = run(repo.root, ["flake", "clear"]);
+    expect(cleared.stderr).toContain("cleared");
+    const out = run(repo.root, ["flake", "report"]);
+    expect(out.stdout).toContain("No flaky tests");
+  });
+
+  it("--llm without an API key warns and falls back to static selection", () => {
+    repo = makeRepo(FILES);
+    repo.commitAll("init");
+    repo.write("src/a.ts", `export const a = () => 99;`);
+    const out = spawnSync(process.execPath, [CLI, "--since", "HEAD", "--llm"], {
+      cwd: repo.root,
+      encoding: "utf8",
+      env: { ...process.env, ANTHROPIC_API_KEY: "" },
+    });
+    expect(out.status).toBe(0);
+    expect(out.stdout.trim()).toBe("test/a.test.ts");
+    expect(out.stderr).toContain("ANTHROPIC_API_KEY is not set");
+  });
 });

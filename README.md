@@ -6,17 +6,17 @@
 
 **Pare your test runs to the bone — run only the tests your diff actually touches.**
 
-**⚡ Static-first** · **🧩 Import-graph aware** · **🛡️ Safe by default** · **📦 Zero runtime dependencies** · **🔬 Vitest · Jest · Node**
+**⚡ Static-first** · **🧩 Import-graph aware** · **🛡️ Safe by default** · **📦 Zero runtime dependencies** · **🔬 Flakiness signal** · **🤖 Optional LLM booster**
 
 <br />
 
 [![CI](https://img.shields.io/github/actions/workflow/status/TheJoeKD20/pare/ci.yml?branch=main&label=CI&logo=github)](https://github.com/TheJoeKD20/pare/actions/workflows/ci.yml)
-[![npm](https://img.shields.io/npm/v/pare?logo=npm&color=cb3837)](https://www.npmjs.com/package/pare)
+[![npm](https://img.shields.io/npm/v/pare-cli?logo=npm&color=cb3837)](https://www.npmjs.com/package/pare-cli)
 [![licence](https://img.shields.io/badge/licence-MIT-blue)](LICENSE)
 [![node](https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white)](https://nodejs.org)
 [![tested on every PR](https://img.shields.io/badge/tests-on%20every%20PR-3fb950)](https://github.com/TheJoeKD20/pare/actions)
 
-**🚀 [Quick start](#-quick-start)** · **✨ [Features](#-key-features)** · **🧠 [How it works](#-how-it-works)** · **⚙️ [Config](#%EF%B8%8F-configuration)** · **🗺️ [Roadmap](#%EF%B8%8F-roadmap)**
+**🚀 [Quick start](#-quick-start)** · **✨ [Features](#-key-features)** · **🧠 [How it works](#-how-it-works)** · **🔬 [Flakiness](#-flakiness-signal)** · **🤖 [LLM booster](#-llm-booster-opt-in)** · **🗺️ [Roadmap](#%EF%B8%8F-roadmap)**
 
 <br />
 
@@ -37,6 +37,8 @@
 - [🧠 How it works](#-how-it-works)
 - [🧰 Commands](#-commands)
 - [🚩 Flags](#-flags)
+- [🔬 Flakiness signal](#-flakiness-signal)
+- [🤖 LLM booster (opt-in)](#-llm-booster-opt-in)
 - [⚙️ Configuration](#%EF%B8%8F-configuration)
 - [🛡️ The safety guarantee](#%EF%B8%8F-the-safety-guarantee)
 - [📐 Supported ecosystems](#-supported-ecosystems)
@@ -76,7 +78,9 @@ pare: selected 14/1,820 tests from 3 changed files in 41ms
 - **🪢 tsconfig path aliases.** `@app/*`, `baseUrl`, and `extends` chains resolve exactly the way your bundler sees them.
 - **⚡ Fast and deterministic.** Pure static analysis, no LLM, no network. The same diff always yields the same answer — Pare pares its own 9-file suite down to 4 in ~30 ms.
 - **🔌 Runner-agnostic.** Emit a plain list for `$(…)`, NUL-separated for `xargs -0`, a `--json` report for tooling, or let `pare run` invoke your runner directly.
-- **📦 Zero runtime dependencies.** One small binary. Nothing to audit, nothing to pull in transitively.
+- **🔬 Flakiness signal.** Track per-test pass/fail history (or re-run N times) and rank tests by a flake score, so you trust a pared run's failures. [Details →](#-flakiness-signal)
+- **🤖 Optional LLM booster.** Off by default and never load-bearing: when enabled it *adds* heuristic suggestions for dynamic links static analysis can't see — flagged separately, validated against the real test list. [Details →](#-llm-booster-opt-in)
+- **📦 Zero runtime dependencies.** One small binary. Nothing to audit, nothing to pull in transitively — the LLM booster uses `fetch`, not an SDK.
 
 ---
 
@@ -84,10 +88,10 @@ pare: selected 14/1,820 tests from 3 changed files in 41ms
 
 ```bash
 # Run it once, no install:
-npx pare --since main
+npx pare-cli --since main
 
-# …or add it to the project:
-npm i -D pare
+# …or add it to the project (the binary is `pare`):
+npm i -D pare-cli
 ```
 
 Wire it into your test command:
@@ -153,6 +157,9 @@ network, so results are reproducible and trustworthy.
 | `pare run -- <cmd…>` | Run `<cmd>` with the affected tests appended; skips the run when nothing is affected | ✅ |
 | `pare explain` | Print a human-readable breakdown of the decision | ✅ |
 | `pare --json` | Emit a structured JSON report | ✅ |
+| `pare flake record <junit…>` | Fold JUnit result files into the flakiness history | ✅ |
+| `pare flake report` | Rank tests by flakiness (flip rate) | ✅ |
+| `pare flake run -- <cmd…>` | Re-run a command N times and estimate flake rate | ✅ |
 
 ---
 
@@ -164,6 +171,7 @@ network, so results are reproducible and trustworthy.
 | `-b, --base <ref>` | Alias for `--since` | — |
 | `--json` | Emit a JSON report instead of a list | off |
 | `--safety` / `--no-safety` | Toggle the full-suite fallback | **on** |
+| `--llm` | Add heuristic suggestions via the LLM booster (needs `ANTHROPIC_API_KEY`) | off |
 | `--cwd <dir>` | Run as if from `<dir>` | `process.cwd()` |
 | `-0, --null` | NUL-separate output (for `xargs -0`) | off |
 | `--absolute` | Print absolute paths | cwd-relative |
@@ -171,6 +179,54 @@ network, so results are reproducible and trustworthy.
 
 > 💡 Diagnostics (`pare: selected 14/1,820 …`) are written to **stderr**, so `$(pare …)`
 > stays clean for command substitution.
+
+---
+
+## 🔬 Flakiness signal
+
+A pared suite is only trustworthy if you know which failures are *real*. Pare keeps a
+local history of per-test pass/fail outcomes and surfaces a **flake score** — the
+fraction of run-to-run transitions between pass and fail — so an intermittent test
+stands out from one that's simply broken.
+
+Feed it the JUnit report your runner already emits:
+
+```bash
+# Estimate flake rate by re-running the suite N times (repeat-N):
+pare flake run --runs 5 --results junit.xml -- npx vitest run --reporter=junit
+
+# …or record CI results over time, then rank:
+pare flake record junit.xml
+pare flake report
+```
+
+```text
+score  fails  runs  conf    test
+ 1.00   0.50    10  high    src/session.test.ts > refreshes the token
+ 0.40   0.20     5  medium  src/queue.test.ts > drains in order
+```
+
+- **🎯 Flakiness is inconsistency, not failure.** A test that always fails is broken (score `0`, fail-rate `1`); a test that flips between pass and fail is flaky (high score). The score separates the two so you triage the right ones.
+- **📈 Confidence grows with data.** Each test is tagged `low` / `medium` / `high` by how many runs back it. One red run isn't a verdict.
+- **🗃️ Local cache, no service.** History lives in `.pare-cache/flake.json` — nothing leaves your machine, and `pare flake clear` wipes it.
+
+---
+
+## 🤖 LLM booster (opt-in)
+
+Static analysis can't see **dynamic** links — reflection, dependency injection,
+string-keyed registries, config-driven wiring. The optional booster asks a model which
+*additional* tests a change might touch, and adds them clearly flagged as heuristic.
+
+```bash
+export ANTHROPIC_API_KEY=sk-...
+pare run --since main --llm -- npx vitest run
+```
+
+- **🔒 Off by default, never load-bearing.** No flag, no model. No API key, no booster — Pare prints a notice and proceeds with the static selection. A booster failure never fails your run.
+- **➕ Only ever adds.** The booster can suggest tests static analysis missed; it can never remove a statically-selected test. Suggestions are validated against the real test list — it can't invent paths.
+- **🏷️ Always flagged.** `--json` and `pare explain` separate `selectedTests` (deterministic) from `llmSuggested` (heuristic), so you always know which is which.
+- **📦 Still zero runtime dependencies.** The booster talks to the Anthropic Messages API over `fetch` and forces a structured tool call — no SDK pulled in. Override the model with `PARE_LLM_MODEL` (defaults to a current Claude model).
 
 ---
 
@@ -244,8 +300,8 @@ from there.
 | Version | Scope | Status |
 | --- | --- | :---: |
 | **v0.1** | Static import-graph selection · safety fallback · `run` command · JS/TS | ✅ Shipped |
-| **v0.2** | Flakiness signal — local pass/fail history + repeat-N flake estimate | 🚧 Planned |
-| **v0.2** | LLM booster (opt-in, flagged) — suggest tests static analysis misses via reflection / DI / string registries | 🚧 Planned |
+| **v0.2** | Flakiness signal — local pass/fail history + repeat-N flake estimate | ✅ Shipped |
+| **v0.2** | LLM booster (opt-in, flagged) — suggest tests static analysis misses via reflection / DI / string registries | ✅ Shipped |
 | **v0.3** | More ecosystems (Python, Go) · monorepo project graphs · watch mode | 🔭 Exploring |
 
 The LLM layer is intentionally **optional and clearly flagged** — it never gates adoption on

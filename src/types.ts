@@ -28,8 +28,13 @@ export interface SelectionResult {
   base: string | null;
   /** Project-relative paths of files that changed. */
   changedFiles: string[];
-  /** Project-relative paths of the test files selected to run. */
+  /** Project-relative paths of the test files selected by static analysis. */
   selectedTests: string[];
+  /**
+   * Additional tests proposed by the optional LLM booster — heuristic, for
+   * dynamic links static analysis cannot see. Empty unless `--llm` is used.
+   */
+  llmSuggested: string[];
   /** Project-relative paths of every test file discovered (the full suite). */
   allTests: string[];
   /** Whether Pare fell back to running the whole suite. */

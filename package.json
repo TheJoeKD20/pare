@@ -1,7 +1,7 @@
 {
-  "name": "pare",
-  "version": "0.1.0",
-  "description": "Pare down a bloated test run to just the tests a diff actually affects. Static-first, deterministic, zero runtime dependencies.",
+  "name": "pare-cli",
+  "version": "0.2.0",
+  "description": "Pare down a bloated test run to just the tests a diff actually affects. Static-first, deterministic, zero runtime dependencies, with an optional flakiness signal and LLM booster.",
   "keywords": [
     "test",
     "test-selection",
