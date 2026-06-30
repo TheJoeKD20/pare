@@ -1,0 +1,17 @@
+<svg width="160" height="160" viewBox="0 0 160 160" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Pare logo">
+  <rect width="160" height="160" rx="34" fill="#0d1117"/>
+  <rect x="0.5" y="0.5" width="159" height="159" rx="33.5" stroke="#30363d"/>
+  <!-- pruning shears paring a branch down -->
+  <g stroke="#3fb950" stroke-width="7" stroke-linecap="round" stroke-linejoin="round" fill="none">
+    <path d="M48 112 L96 64"/>
+    <path d="M64 112 L96 80"/>
+    <circle cx="44" cy="116" r="9"/>
+    <circle cx="60" cy="116" r="9"/>
+  </g>
+  <g stroke="#7d8590" stroke-width="6" stroke-linecap="round" fill="none" opacity="0.55">
+    <path d="M104 56 L124 36"/>
+    <path d="M112 72 L132 60"/>
+  </g>
+  <circle cx="118" cy="42" r="5" fill="#f85149"/>
+  <circle cx="126" cy="60" r="5" fill="#f85149"/>
+</svg>
