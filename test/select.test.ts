@@ -124,6 +124,16 @@ describe("computeSelection", () => {
       const r = computeSelection(setup([{ path: "docs/guide.md" }]));
       expect(r.fellBackToFullSuite).toBe(false);
     });
+
+    it("falls back when a deleted file has an importable non-JS/TS extension", () => {
+      // .json is in the resolvable extension set: a source file may import it,
+      // so its deletion has an unknowable blast radius.
+      const r = computeSelection(
+        setup([{ path: "src/data.json", deleted: true }]),
+      );
+      expect(r.fellBackToFullSuite).toBe(true);
+      expect(r.reason.kind).toBe("untracked-source");
+    });
   });
 
   describe("strict mode (--no-safety)", () => {

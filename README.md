@@ -75,7 +75,7 @@ pare: selected 14/1,820 tests from 3 changed files in 41ms
 - **🎯 Diff-scoped selection.** Give Pare a base ref and it returns the minimal set of test files affected by the change — nothing more, nothing less.
 - **🧩 Real import-graph analysis.** It parses static `import`, `export … from`, `require`, dynamic `import()` and type-only imports, then walks the **reverse** dependency graph so a change deep in a shared util pulls in every test that depends on it.
 - **🛡️ Safe by default.** When a change could affect anything — a lockfile, `tsconfig`, test-runner config, or a source file outside the graph — Pare runs the **whole** suite rather than guess. (Known v0.2 gaps where this doesn't yet hold are listed in the [FAQ](#-faq).)
-- **🪢 tsconfig path aliases.** `@app/*`, `baseUrl` and relative single-`extends` chains resolve from the **root** `tsconfig.json`/`jsconfig.json`. (Package-based `extends` presets, `extends` arrays and per-package tsconfigs aren't resolved yet.)
+- **🪢 tsconfig path aliases.** `@app/*`, `baseUrl` and relative `extends` chains — including TS 5.0 `extends` **arrays** — resolve from the **root** `tsconfig.json`/`jsconfig.json`. (Package-based `extends` presets and per-package tsconfigs aren't resolved yet; Pare warns when it skips one.)
 - **⚡ Fast and deterministic.** Pure static analysis, no LLM, no network. The same diff always yields the same answer — Pare pares its own 14-file suite down to a handful in ~30 ms.
 - **🔌 Runner-agnostic.** Emit a plain list for `$(…)`, NUL-separated for `xargs -0`, a `--json` report for tooling, or let `pare run` invoke your runner directly.
 - **🔬 Flakiness signal.** Track per-test pass/fail history (or re-run N times) and rank tests by a flake score, so you trust a pared run's failures. [Details →](#-flakiness-signal)
@@ -109,8 +109,10 @@ pare run --since origin/main -- npx vitest run
 
 In CI, diff against the pull request's base branch — **and make sure that ref
 is actually fetched**. `actions/checkout` defaults to a depth-1 clone with no
-base branch, and an unresolvable base currently selects *zero* tests (green
-CI, nothing ran):
+base branch. A missing ref is loud, not silently green — safety mode falls
+back to the **full** suite and prints the reason; `--no-safety` exits 2 — but
+Pare still needs the real history to compute an actual diff and pare the run
+down:
 
 ```yaml
 - uses: actions/checkout@v4
@@ -328,13 +330,16 @@ the extra tests — clearly flagged as heuristic.
 
 **Known v0.2 gaps** where a skip can still happen with safety on (fixes planned):
 
-- An **unresolvable base ref** (typo, or a shallow CI clone that never fetched it) currently
-  yields an empty diff → zero tests selected. Use `fetch-depth: 0` in CI (see the recipe
-  above) until this fails loudly instead.
+- An **unresolvable base ref** (typo, or a shallow CI clone that never fetched it) now fails
+  **loudly**: safety mode runs the full suite with a printed reason, and `--no-safety` exits 2
+  — it can no longer silently select zero tests. (`fetch-depth: 0` is still what makes a real,
+  pared diff possible in CI — see the recipe above.)
 - **Workspace-name imports** (`@acme/ui` from a sibling package) aren't in the graph yet —
   monorepo cross-package changes under-select. Roadmap: v0.3 project graphs.
-- Filenames git quotes (non-ASCII, quotes, backslashes) and **deleted non-JS/TS imports**
-  (e.g. a `.json` a module imports) currently slip past the fallback.
+- ~~Filenames git quotes and deleted non-JS/TS imports slip past the fallback~~ — both closed:
+  filenames are now read NUL-separated (non-ASCII, quotes, backslashes and surrounding spaces
+  survive intact), and deleting any importable file (e.g. a `.json` a module imports) triggers
+  the safety fallback.
 
 </details>
 

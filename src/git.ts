@@ -15,19 +15,31 @@ export interface GitChanges {
 
 class GitError extends Error {}
 
-function git(args: string[], cwd: string): string {
+/**
+ * Thrown when the set of changed files cannot be determined — most commonly an
+ * unresolvable base ref (a typo, or a shallow CI clone that never fetched it).
+ * Callers must not treat this as "no changes": under safety mode it should
+ * trigger a full-suite fallback, and without safety it should fail the run.
+ */
+export class GitDiffError extends Error {}
+
+function run(args: string[], cwd: string): string {
   try {
     return execFileSync("git", args, {
       cwd,
       encoding: "utf8",
       stdio: ["ignore", "pipe", "pipe"],
       maxBuffer: 64 * 1024 * 1024,
-    }).trim();
+    });
   } catch (err) {
-    throw new GitError(
-      `git ${args.join(" ")} failed: ${(err as Error).message}`,
-    );
+    const stderr = (err as { stderr?: string }).stderr;
+    const detail = stderr?.trim() || (err as Error).message;
+    throw new GitError(`git ${args.join(" ")} failed: ${detail}`);
   }
+}
+
+function git(args: string[], cwd: string): string {
+  return run(args, cwd).trim();
 }
 
 function gitOrNull(args: string[], cwd: string): string | null {
@@ -52,6 +64,10 @@ export function repoRoot(cwd: string): string {
  *
  * Without a `base`, only local changes (working tree vs HEAD) plus untracked
  * files are considered.
+ *
+ * Throws {@link GitDiffError} when git cannot produce the change list (e.g.
+ * the base ref does not resolve) — an error is never reported as an empty
+ * diff.
  */
 export function getChangedFiles(cwd: string, base: string | null): GitChanges {
   const files = new Map<string, ChangedFile>();
@@ -67,46 +83,77 @@ export function getChangedFiles(cwd: string, base: string | null): GitChanges {
   let resolvedBase: string | null = null;
 
   if (base) {
+    // A failed merge-base alone is tolerable (e.g. shallow clone with no
+    // common ancestor recorded) — the diff below still validates the ref.
     const mergeBase = gitOrNull(["merge-base", "HEAD", base], cwd) ?? base;
     diffFrom = mergeBase;
     resolvedBase = base;
   }
 
   // Committed + staged + unstaged changes relative to the diff origin.
-  const nameStatus = gitOrNull(
-    ["diff", "--name-status", "--no-renames", diffFrom],
-    cwd,
-  );
-  if (nameStatus) parseNameStatus(nameStatus, add);
+  // -z gives NUL-separated raw paths, immune to core.quotePath mangling of
+  // non-ASCII / quoted filenames. Output is used untrimmed: paths may contain
+  // leading/trailing whitespace.
+  let nameStatus: string;
+  try {
+    nameStatus = run(["diff", "--name-status", "--no-renames", "-z", diffFrom], cwd);
+  } catch (err) {
+    throw new GitDiffError(
+      base
+        ? `cannot diff against '${base}' — the ref may not exist or was not fetched ` +
+          `(in CI, fetch the base branch, e.g. checkout with fetch-depth: 0). ${(err as Error).message}`
+        : (err as Error).message,
+    );
+  }
+  for (const file of parseNameStatusZ(nameStatus)) add(file.path, file.deleted);
 
   // Untracked files (new files not yet added) count as additions.
-  const untracked = gitOrNull(
-    ["ls-files", "--others", "--exclude-standard"],
-    cwd,
-  );
-  if (untracked) {
-    for (const line of splitLines(untracked)) add(line, false);
+  let untracked: string;
+  try {
+    untracked = run(["ls-files", "--others", "--exclude-standard", "-z"], cwd);
+  } catch (err) {
+    throw new GitDiffError(`cannot list untracked files. ${(err as Error).message}`);
   }
+  for (const path of parseLsFilesZ(untracked)) add(path, false);
 
   return { base: resolvedBase, files: [...files.values()] };
 }
 
-function parseNameStatus(
-  output: string,
-  add: (path: string, deleted: boolean) => void,
-): void {
-  for (const line of splitLines(output)) {
-    const tab = line.indexOf("\t");
-    if (tab === -1) continue;
-    const status = line.slice(0, tab).trim();
-    const path = line.slice(tab + 1).trim();
-    add(path, status.startsWith("D"));
+/**
+ * Parse `git diff --name-status --no-renames -z` output: NUL-separated records
+ * alternating status and path. Pure — exercised directly by tests.
+ */
+export function parseNameStatusZ(output: string): ChangedFile[] {
+  const records = output.split("\0");
+  const out: ChangedFile[] = [];
+  let i = 0;
+  while (i < records.length) {
+    const status = records[i]!;
+    if (status === "") {
+      i++; // trailing NUL (or stray separator)
+      continue;
+    }
+    const path = records[i + 1];
+    if (path === undefined) break;
+    // --no-renames means R/C never appear, but consume both sides defensively:
+    // a rename/copy record carries a second (destination) path.
+    if (status.startsWith("R") || status.startsWith("C")) {
+      const dest = records[i + 2];
+      out.push({ path, deleted: status.startsWith("R") });
+      if (dest !== undefined && dest !== "") out.push({ path: dest, deleted: false });
+      i += 3;
+      continue;
+    }
+    out.push({ path, deleted: status.startsWith("D") });
+    i += 2;
   }
+  return out;
 }
 
-function splitLines(text: string): string[] {
-  return text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter(Boolean);
+/**
+ * Parse `git ls-files --others --exclude-standard -z` output: NUL-separated
+ * raw paths. Pure — exercised directly by tests.
+ */
+export function parseLsFilesZ(output: string): string[] {
+  return output.split("\0").filter((p) => p.length > 0);
 }

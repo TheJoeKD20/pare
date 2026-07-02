@@ -10,6 +10,6 @@ export function describeReason(reason: FallbackReason): string {
     case "untracked-source":
       return `source outside the dependency graph changed (${reason.files.join(", ")}) — running full suite`;
     case "no-base-graph":
-      return "no dependency information available — running full suite";
+      return `cannot compute the diff${reason.detail ? ` (${reason.detail})` : ""} — running full suite`;
   }
 }

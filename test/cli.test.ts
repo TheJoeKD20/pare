@@ -86,6 +86,27 @@ d("pare CLI (built binary)", () => {
     expect(out.stdout).not.toContain("test/b.test.ts");
   });
 
+  it("runs the full suite on an unresolvable base ref by default (safety)", () => {
+    repo = makeRepo(FILES);
+    repo.commitAll("init");
+    repo.write("src/a.ts", `export const a = () => 11;`);
+    const out = run(repo.root, ["--since", "no-such-ref"]);
+    expect(out.status).toBe(0);
+    const listed = out.stdout.trim().split("\n").sort();
+    expect(listed).toEqual(["test/a.test.ts", "test/b.test.ts"]);
+    expect(out.stderr).toContain("running full suite");
+    expect(out.stderr).toContain("no-such-ref");
+  });
+
+  it("exits 2 on an unresolvable base ref with --no-safety", () => {
+    repo = makeRepo(FILES);
+    repo.commitAll("init");
+    const out = run(repo.root, ["--since", "no-such-ref", "--no-safety"]);
+    expect(out.status).toBe(2);
+    expect(out.stdout).toBe("");
+    expect(out.stderr).toContain("no-such-ref");
+  });
+
   it("exits non-zero on unknown options", () => {
     repo = makeRepo(FILES);
     repo.commitAll("init");
@@ -124,6 +145,49 @@ d("pare CLI (built binary)", () => {
     expect(cleared.stderr).toContain("cleared");
     const out = run(repo.root, ["flake", "report"]);
     expect(out.stdout).toContain("No flaky tests");
+  });
+
+  it("flake run does not record a stale results file when a run writes none", () => {
+    repo = makeRepo(FILES);
+    repo.commitAll("init");
+    // A leftover results file from an earlier run; the command below exits
+    // without writing a new one, so nothing must be recorded.
+    repo.write("r.xml", JUNIT("fail"));
+    const out = run(repo.root, [
+      "flake",
+      "run",
+      "--runs",
+      "2",
+      "--results",
+      "r.xml",
+      "--",
+      process.execPath,
+      "-e",
+      "process.exit(1)",
+    ]);
+    expect(out.status).toBe(0);
+    expect(out.stderr.match(/results file not found/g)?.length).toBe(2);
+    const report = run(repo.root, ["flake", "report", "--json"]);
+    expect(JSON.parse(report.stdout)).toEqual([]);
+  });
+
+  it("flake run fails fast when the command cannot be spawned", () => {
+    repo = makeRepo(FILES);
+    repo.commitAll("init");
+    const out = run(repo.root, [
+      "flake",
+      "run",
+      "--runs",
+      "3",
+      "--results",
+      "r.xml",
+      "--",
+      "definitely-not-a-real-command-xyz",
+    ]);
+    expect(out.status).toBe(2);
+    expect(out.stderr).toContain("failed to run definitely-not-a-real-command-xyz");
+    // Fails on the first iteration instead of looping through every run.
+    expect(out.stderr).not.toContain("flake run 2/3");
   });
 
   it("--llm without an API key warns and falls back to static selection", () => {

@@ -390,7 +390,13 @@ function runFlake(args: ParsedArgs): void {
       const resultsAbs = path.resolve(args.cwd, args.results);
       for (let r = 1; r <= args.runs; r++) {
         process.stderr.write(`pare: flake run ${r}/${args.runs}\n`);
-        spawnSync(cmd!, rest, { cwd: args.cwd, stdio: "inherit" });
+        // Remove any previous results file so a run that crashes before
+        // writing one can't silently re-record stale outcomes.
+        fs.rmSync(resultsAbs, { force: true });
+        const child = spawnSync(cmd!, rest, { cwd: args.cwd, stdio: "inherit" });
+        if (child.error) {
+          fail(`pare: failed to run ${cmd}: ${child.error.message}`);
+        }
         if (fs.existsSync(resultsAbs)) {
           recordRun(store, parseJUnit(fs.readFileSync(resultsAbs, "utf8")));
         } else {
