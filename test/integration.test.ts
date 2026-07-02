@@ -105,4 +105,51 @@ describe("selectTests (end to end against git)", () => {
     expect(result.base).toBeNull();
     expect(result.selectedTests).toEqual(["test/b.test.ts"]);
   });
+
+  it("falls back to the full suite when the base ref is unresolvable (safety)", () => {
+    const r = freshRepo();
+    r.write("src/a.ts", `export const a = () => 3;`);
+    const result = selectTests({ cwd: r.root, base: "no-such-ref" });
+    expect(result.fellBackToFullSuite).toBe(true);
+    expect(result.reason.kind).toBe("no-base-graph");
+    expect(result.selectedTests).toEqual(result.allTests);
+    expect(result.allTests.length).toBe(3);
+  });
+
+  it("throws on an unresolvable base ref when safety is off", () => {
+    const r = freshRepo();
+    expect(() =>
+      selectTests({ cwd: r.root, base: "no-such-ref", safety: false }),
+    ).toThrow(/no-such-ref/);
+  });
+
+  it("tracks changes to filenames git would quote (non-ASCII)", () => {
+    repo = makeRepo({
+      "package.json": JSON.stringify({ name: "fixture", version: "1.0.0" }),
+      "src/ümlaut.ts": `export const u = () => 1;`,
+      "test/u.test.ts": `import { u } from "../src/ümlaut";\nexport const t = u();`,
+      "test/other.test.ts": `export const t = 1;`,
+    });
+    repo.commitAll("initial");
+    repo.write("src/ümlaut.ts", `export const u = () => 2;`);
+    const result = selectTests({ cwd: repo.root, base: "HEAD" });
+    expect(result.changedFiles).toEqual(["src/ümlaut.ts"]);
+    expect(result.selectedTests).toEqual(["test/u.test.ts"]);
+    expect(result.fellBackToFullSuite).toBe(false);
+  });
+
+  it("falls back when an importable non-JS/TS file (e.g. .json) is deleted (safety)", () => {
+    repo = makeRepo({
+      "package.json": JSON.stringify({ name: "fixture", version: "1.0.0" }),
+      "src/data.json": JSON.stringify({ answer: 42 }),
+      "src/a.ts": `import data from "./data.json";\nexport const a = () => data;`,
+      "test/a.test.ts": `import { a } from "../src/a";\nexport const t = a();`,
+    });
+    repo.commitAll("initial");
+    repo.remove("src/data.json");
+    const result = selectTests({ cwd: repo.root, base: "HEAD" });
+    expect(result.fellBackToFullSuite).toBe(true);
+    expect(result.reason.kind).toBe("untracked-source");
+    expect(result.selectedTests).toContain("test/a.test.ts");
+  });
 });

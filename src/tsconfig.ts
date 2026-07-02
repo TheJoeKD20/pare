@@ -19,7 +19,8 @@ interface AliasEntry {
 }
 
 interface RawTsconfig {
-  extends?: string;
+  /** TS 5.0+ allows an array of configs to extend. */
+  extends?: string | string[];
   compilerOptions?: {
     baseUrl?: string;
     paths?: Record<string, string[]>;
@@ -77,21 +78,43 @@ function readWithExtends(file: string, seen: Set<string>): RawTsconfig {
 
   if (!raw.extends) return raw;
 
-  const parentPath = resolveExtends(raw.extends, path.dirname(abs));
-  const parent = parentPath ? readWithExtends(parentPath, seen) : {};
+  // TS 5.0+ `extends` may be an array: later entries override earlier ones,
+  // and the extending file overrides them all — fold left in that order.
+  const chain = Array.isArray(raw.extends) ? raw.extends : [raw.extends];
+  let merged: RawTsconfig = {};
+  for (const ext of chain) {
+    const parentPath = resolveExtends(ext, path.dirname(abs));
+    const parent = parentPath ? readWithExtends(parentPath, seen) : {};
+    merged = mergeTsconfigs(merged, parent);
+  }
+  return { extends: raw.extends, ...mergeTsconfigs(merged, raw) };
+}
+
+function mergeTsconfigs(base: RawTsconfig, override: RawTsconfig): RawTsconfig {
   return {
-    extends: raw.extends,
     compilerOptions: {
-      ...parent.compilerOptions,
-      ...raw.compilerOptions,
-      paths: raw.compilerOptions?.paths ?? parent.compilerOptions?.paths,
+      ...base.compilerOptions,
+      ...override.compilerOptions,
+      paths: override.compilerOptions?.paths ?? base.compilerOptions?.paths,
     },
   };
 }
 
+const warnedPackageExtends = new Set<string>();
+
 function resolveExtends(ext: string, fromDir: string): string | null {
-  const candidate = ext.startsWith(".") ? path.resolve(fromDir, ext) : null;
-  if (!candidate) return null; // package extends not supported in v0.1
+  if (!ext.startsWith(".") && !path.isAbsolute(ext)) {
+    // Package-name extends (e.g. "@tsconfig/node18") are not resolved yet —
+    // say so once rather than silently dropping any aliases it defines.
+    if (!warnedPackageExtends.has(ext)) {
+      warnedPackageExtends.add(ext);
+      process.stderr.write(
+        `pare: tsconfig extends "${ext}" is a package reference, which Pare does not resolve yet — any path aliases it defines are ignored.\n`,
+      );
+    }
+    return null;
+  }
+  const candidate = path.resolve(fromDir, ext);
   if (fs.existsSync(candidate)) return candidate;
   if (fs.existsSync(`${candidate}.json`)) return `${candidate}.json`;
   return null;

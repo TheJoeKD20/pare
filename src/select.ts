@@ -7,10 +7,10 @@ import type {
   SelectionResult,
 } from "./types.js";
 import { loadConfig } from "./config.js";
-import { walkProject, PARSEABLE } from "./files.js";
+import { walkProject } from "./files.js";
 import { buildGraph, affectedBy } from "./graph.js";
 import { loadPathAliases } from "./tsconfig.js";
-import { repoRoot, getChangedFiles, type GitChanges } from "./git.js";
+import { repoRoot, getChangedFiles, GitDiffError, type GitChanges } from "./git.js";
 import { compileGlobs, matchesAny } from "./glob.js";
 import { relPosix } from "./util.js";
 
@@ -41,7 +41,25 @@ export function selectTests(options: SelectOptions = {}): SelectionResult {
     ctx: { known, extensions: config.extensions, aliases },
   });
 
-  const changes = getChangedFiles(root, base);
+  let changes: GitChanges;
+  try {
+    changes = getChangedFiles(root, base);
+  } catch (err) {
+    if (!(err instanceof GitDiffError) || !safety) throw err;
+    // A failed diff is NOT an empty diff: with safety on, run everything
+    // rather than silently selecting zero tests.
+    const allTests = tests.map((t) => relPosix(root, t)).sort();
+    return {
+      base,
+      changedFiles: [],
+      selectedTests: allTests,
+      llmSuggested: [],
+      allTests,
+      fellBackToFullSuite: true,
+      reason: { kind: "no-base-graph", detail: err.message },
+      durationMs: elapsed(start),
+    };
+  }
 
   return computeSelection({
     config,
@@ -80,6 +98,10 @@ export function computeSelection(input: ComputeInput): SelectionResult {
   const changedFiles = changes.files.map((f) => f.path).sort();
 
   const configRes = compileGlobs(config.globalConfigFiles);
+  // Anything module resolution could import (includes e.g. .json) — a deleted
+  // or unscanned file with one of these extensions has an unknowable blast
+  // radius, unlike docs/images.
+  const resolvable = new Set(config.extensions);
 
   const globalConfigHits: string[] = [];
   const unknownSources: string[] = [];
@@ -93,7 +115,7 @@ export function computeSelection(input: ComputeInput): SelectionResult {
     const abs = path.resolve(root, change.path);
     if (known.has(abs)) {
       seeds.push(abs);
-    } else if (PARSEABLE.has(path.extname(change.path))) {
+    } else if (resolvable.has(path.extname(change.path))) {
       // A source file we have no graph node for (deleted, or outside the
       // scanned tree): its blast radius is unknown.
       unknownSources.push(change.path);

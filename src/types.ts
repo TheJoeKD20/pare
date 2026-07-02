@@ -21,7 +21,7 @@ export type FallbackReason =
   | { kind: "none" }
   | { kind: "global-config"; files: string[] }
   | { kind: "untracked-source"; files: string[] }
-  | { kind: "no-base-graph" };
+  | { kind: "no-base-graph"; detail?: string };
 
 export interface SelectionResult {
   /** The base ref the diff was computed against, or null for working-tree-only. */
